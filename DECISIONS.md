@@ -9,3 +9,40 @@
 **Why a dictionary and not a set?** A set can only track IDs. A dictionary lets us track the full resident record alongside the ID, so we can deduplicate and collect data in a single pass.
 
 **Trade-off:** We report the number of duplicates found in the `warnings` field of the API response, so the caller knows the data was cleaned. This is transparent and auditable.
+
+---
+
+## 2. XML Retry & Timeout Policy
+
+**Problem:** The XML Benefits Register intentionally sleeps 0.7–2.4 seconds per request and returns a `500 Internal Server Error` on 15% of requests.
+
+**Decision:**
+- **Timeout threshold:** 3.0 seconds (server max delay 2.4s + 0.6s network buffer).
+- **Retry count:** Up to 3 attempts on 500 errors or timeouts.
+- **Retry delay:** 0.5 seconds between attempts.
+
+**Why 3.0 seconds?** Setting it lower (e.g., 1.5s) would cut off successful responses that happen to be slow. Setting it higher (e.g., 10s) would make caseworkers wait too long if the server is truly dead.
+
+**Why 3 retries?** With a 15% failure rate, the probability of failing all 3 attempts is 0.15³ = 0.34%, which is acceptably rare.
+
+---
+
+## 3. Graceful Degradation Policy
+
+**Principle:** Partial data beats an error page. If one source is unavailable, we return what we have with a clear warning.
+
+| Failure Scenario | What the Caller Gets |
+| :--- | :--- |
+| Both sources respond | `status: "success"`, full data, no warnings |
+| REST works, XML fails | `status: "partial_success"`, REST data only + warning explaining XML failure |
+| REST works, XML times out | `status: "partial_success"`, REST data only + timeout warning |
+| REST fails, XML works | `status: "partial_success"`, XML data only + warning explaining REST failure |
+| Both sources fail | `status: "error"`, empty data + warnings for both failures |
+
+---
+
+## 4. Concurrent Fetching
+
+**Decision:** We use `asyncio.gather()` to fetch from REST and XML simultaneously, not sequentially.
+
+**Why?** If we fetched sequentially, the total wait time would be REST time + XML time (potentially 0s + 2.4s = 2.4s). By fetching concurrently, the total wait time is max(REST time, XML time), which is faster because both network calls happen at the same time.

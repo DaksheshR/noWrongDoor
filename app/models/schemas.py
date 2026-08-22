@@ -19,12 +19,35 @@ class Resident(BaseModel):
     last_contact: Optional[str] = None
 
 
+class BenefitRecord(BaseModel):
+    """A single benefit record from the XML Benefits Register."""
+    ref: Optional[str] = None
+    name: Optional[str] = None
+    born: Optional[str] = None
+    address: Optional[str] = None
+    town: Optional[str] = None
+    benefit_code: Optional[str] = None
+    review_due: Optional[str] = None
+
+
 class ResidentsResponse(BaseModel):
     """
-    The API response envelope.
-    Contains the data, a status indicator, and any warnings.
+    The API response envelope for listing all residents.
+    Contains data from both sources, a status indicator, and any warnings.
     """
-    status: str  # "success" or "partial_success"
+    status: str  # "success", "partial_success", or "error"
     total_residents: int
+    total_benefits: int
     warnings: list[str] = []
     residents: list[Resident] = []
+    benefits: list[BenefitRecord] = []
+
+
+class SingleResidentResponse(BaseModel):
+    """
+    The API response envelope for a single resident lookup.
+    """
+    status: str
+    warnings: list[str] = []
+    resident: Optional[Resident] = None
+    benefits: list[BenefitRecord] = []
