@@ -6,6 +6,7 @@ Handles:
 - Retry logic (up to 3 attempts) for the 15% random 500 errors
 - Timeout at 3.0 seconds (XML server max delay is 2.4s + 0.6s buffer)
 - Caching (returns cached data if available and not expired)
+- Circuit Breaker (instantly returns when server is known to be dead)
 - Graceful degradation — returns empty list + warning if all retries fail
 """
 
@@ -13,6 +14,7 @@ import xml.etree.ElementTree as ET
 import httpx
 import asyncio
 from app.cache import get_from_cache, set_in_cache
+from app.circuit_breaker import xml_circuit_breaker
 
 XML_BASE_URL = "http://127.0.0.1:8082"
 XML_TIMEOUT = 3.0   # seconds — server max delay is 2.4s + 0.6s buffer
@@ -76,12 +78,20 @@ async def fetch_all_benefits() -> tuple[list[dict], list[str]]:
     Retries up to 3 times on 500 errors.
 
     Returns cached data if available and not expired.
+    Instantly returns if the circuit breaker is OPEN.
 
     Returns:
         A tuple of (list_of_benefit_records, list_of_warnings).
         If the XML service is completely down, returns ([], [warning_message]).
     """
-    # Check cache first
+    # Check circuit breaker first — if OPEN, don't even try
+    if xml_circuit_breaker.is_open:
+        return [], [
+            "XML Benefits Register circuit breaker is OPEN. "
+            "Server is known to be down. Benefits data is unavailable."
+        ]
+
+    # Check cache second
     cached = get_from_cache(CACHE_KEY)
     if cached is not None:
         benefits, original_warnings = cached
@@ -105,6 +115,8 @@ async def fetch_all_benefits() -> tuple[list[dict], list[str]]:
                         await asyncio.sleep(RETRY_DELAY)
                         continue
                     else:
+                        # All retries exhausted — check if server is truly dead
+                        await xml_circuit_breaker.check_health_and_trip()
                         warnings.append(
                             f"XML Benefits Register failed after {MAX_RETRIES} "
                             f"retries (500 errors). Benefits data is unavailable."
@@ -121,6 +133,8 @@ async def fetch_all_benefits() -> tuple[list[dict], list[str]]:
                 return records, warnings
 
         except httpx.ConnectError:
+            # Server is completely unreachable — trip the circuit breaker
+            await xml_circuit_breaker.check_health_and_trip()
             warnings.append(
                 "XML Benefits Register is unreachable. "
                 "Could not establish a connection to the service."
@@ -136,6 +150,8 @@ async def fetch_all_benefits() -> tuple[list[dict], list[str]]:
                 await asyncio.sleep(RETRY_DELAY)
                 continue
             else:
+                # All retries exhausted — check if server is truly dead
+                await xml_circuit_breaker.check_health_and_trip()
                 warnings.append(
                     f"XML Benefits Register timed out after {MAX_RETRIES} "
                     f"retries. Benefits data is unavailable."
@@ -159,6 +175,12 @@ async def fetch_single_benefit(ref: str) -> tuple[dict | None, list[str]]:
     Returns:
         A tuple of (benefit_record_or_None, list_of_warnings).
     """
+    # Check circuit breaker first
+    if xml_circuit_breaker.is_open:
+        return None, [
+            "XML Benefits Register circuit breaker is OPEN. Server is down."
+        ]
+
     warnings: list[str] = []
 
     for attempt in range(1, MAX_RETRIES + 1):
@@ -171,6 +193,7 @@ async def fetch_single_benefit(ref: str) -> tuple[dict | None, list[str]]:
                         await asyncio.sleep(RETRY_DELAY)
                         continue
                     else:
+                        await xml_circuit_breaker.check_health_and_trip()
                         warnings.append(
                             f"XML Benefits Register failed after {MAX_RETRIES} "
                             f"retries for record '{ref}'."
@@ -187,6 +210,7 @@ async def fetch_single_benefit(ref: str) -> tuple[dict | None, list[str]]:
                 return None, warnings
 
         except httpx.ConnectError:
+            await xml_circuit_breaker.check_health_and_trip()
             warnings.append(
                 "XML Benefits Register is unreachable."
             )
@@ -197,6 +221,7 @@ async def fetch_single_benefit(ref: str) -> tuple[dict | None, list[str]]:
                 await asyncio.sleep(RETRY_DELAY)
                 continue
             else:
+                await xml_circuit_breaker.check_health_and_trip()
                 warnings.append(
                     f"XML Benefits Register timed out after {MAX_RETRIES} retries."
                 )

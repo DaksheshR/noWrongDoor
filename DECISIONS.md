@@ -58,3 +58,25 @@
 - **XML:** 120 seconds — The XML service is slow and unreliable. Benefit codes and review dates change infrequently. A longer TTL avoids unnecessary slow calls.
 
 **Trade-off:** Cached data may be up to 60–120 seconds stale. For a social services application where caseworkers are reviewing cases (not making real-time transactions), this staleness is acceptable. The `warnings` field transparently tells the caller when data is served from cache.
+
+---
+
+## 6. Circuit Breaker — Dynamic Polling Strategy
+
+**Problem:** When the XML server is completely dead (not just a random 500 error), every caseworker request would waste 3 seconds waiting for a timeout before falling back to REST-only data. With 50 caseworkers, that's 50 × 3 = 150 seconds of collective wasted time.
+
+**Decision:** We implemented a Dynamic Polling circuit breaker with three behaviors:
+
+| Server State | Circuit State | Background Polling | Caseworker Experience |
+| :--- | :--- | :--- | :--- |
+| Healthy | CLOSED | None (zero wasted traffic) | Full data from both sources |
+| Dead | OPEN | Ping `/health` every 1 second | Instant response with REST data + warning |
+| Recovering | OPEN → CLOSED | Poller detects `/health` OK, stops | Next request gets full data |
+
+**How it decides "truly dead" vs "random failure":**
+When a request fails (500 error or timeout), we don't immediately trip the breaker. We first ping `/health` (which is exempt from the server's slowness and crash traps). If `/health` also fails, the server is truly dead and we trip the breaker. If `/health` succeeds, it was just a random 15% failure and we don't trip.
+
+**Why 1-second polling when OPEN?** The server is dead and nobody else is using it, so aggressive polling doesn't cause harm. It minimizes the recovery "blind spot" to at most 1 second.
+
+**Why no polling when CLOSED?** Zero wasted network traffic when the system is healthy.
+

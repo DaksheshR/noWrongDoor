@@ -15,11 +15,13 @@ from app.models.schemas import (
     ResidentsResponse,
     SingleResidentResponse,
 )
+from app.cache import get_cache_info
+from app.circuit_breaker import xml_circuit_breaker
 
 app = FastAPI(
     title="No Wrong Door",
     description="Unified Resident API — One call, one resident, everything known about them.",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 
@@ -32,6 +34,29 @@ async def health_check():
     return {
         "status": "ok",
         "service": "no-wrong-door-api",
+    }
+
+
+@app.get("/status")
+async def system_status():
+    """
+    Returns the health status of all upstream sources,
+    the circuit breaker state, and cache information.
+    Useful for monitoring and debugging.
+    """
+    return {
+        "service": "no-wrong-door-api",
+        "upstream_sources": {
+            "rest_resident_index": {
+                "url": "http://127.0.0.1:8081",
+                "status": "available",
+            },
+            "xml_benefits_register": {
+                "url": "http://127.0.0.1:8082",
+                "circuit_breaker": xml_circuit_breaker.get_status(),
+            },
+        },
+        "cache": get_cache_info(),
     }
 
 
@@ -135,5 +160,5 @@ async def get_single_resident(resident_id: str):
         status=status,
         warnings=warnings,
         resident=resident,
-        benefits=[],  # Benefits matching will be added in Phase 4 (stretch goal)
+        benefits=[],  # Benefits matching will be added in Phase 4C (stretch goal)
     )
