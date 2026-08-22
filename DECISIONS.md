@@ -46,3 +46,15 @@
 **Decision:** We use `asyncio.gather()` to fetch from REST and XML simultaneously, not sequentially.
 
 **Why?** If we fetched sequentially, the total wait time would be REST time + XML time (potentially 0s + 2.4s = 2.4s). By fetching concurrently, the total wait time is max(REST time, XML time), which is faster because both network calls happen at the same time.
+
+---
+
+## 5. Caching with TTL Expiry
+
+**Problem:** The XML server takes 0.7–2.4 seconds per request. If 50 caseworkers hit our API in the same minute, we would make 50 slow calls to the XML server, causing massive delays.
+
+**Decision:** We cache results in memory with a Time-To-Live (TTL):
+- **REST:** 60 seconds — The REST service is fast, and data changes frequently (the `last_contact` field updates often). A short TTL keeps data fresh.
+- **XML:** 120 seconds — The XML service is slow and unreliable. Benefit codes and review dates change infrequently. A longer TTL avoids unnecessary slow calls.
+
+**Trade-off:** Cached data may be up to 60–120 seconds stale. For a social services application where caseworkers are reviewing cases (not making real-time transactions), this staleness is acceptable. The `warnings` field transparently tells the caller when data is served from cache.

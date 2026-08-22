@@ -5,17 +5,20 @@ Handles:
 - XML parsing using xml.etree.ElementTree
 - Retry logic (up to 3 attempts) for the 15% random 500 errors
 - Timeout at 3.0 seconds (XML server max delay is 2.4s + 0.6s buffer)
+- Caching (returns cached data if available and not expired)
 - Graceful degradation — returns empty list + warning if all retries fail
 """
 
 import xml.etree.ElementTree as ET
 import httpx
 import asyncio
+from app.cache import get_from_cache, set_in_cache
 
 XML_BASE_URL = "http://127.0.0.1:8082"
 XML_TIMEOUT = 3.0   # seconds — server max delay is 2.4s + 0.6s buffer
 MAX_RETRIES = 3      # retry up to 3 times on 500 errors
 RETRY_DELAY = 0.5    # seconds to wait between retries
+CACHE_KEY = "xml_benefits"
 
 
 def _parse_records_xml(xml_text: str) -> list[dict]:
@@ -72,10 +75,19 @@ async def fetch_all_benefits() -> tuple[list[dict], list[str]]:
     Fetches ALL benefit records from the XML service.
     Retries up to 3 times on 500 errors.
 
+    Returns cached data if available and not expired.
+
     Returns:
         A tuple of (list_of_benefit_records, list_of_warnings).
         If the XML service is completely down, returns ([], [warning_message]).
     """
+    # Check cache first
+    cached = get_from_cache(CACHE_KEY)
+    if cached is not None:
+        benefits, original_warnings = cached
+        cache_warnings = ["XML data served from cache."]
+        return benefits, cache_warnings
+
     warnings: list[str] = []
     last_error: str = ""
 
@@ -101,6 +113,11 @@ async def fetch_all_benefits() -> tuple[list[dict], list[str]]:
 
                 response.raise_for_status()
                 records = _parse_records_xml(response.text)
+
+                # Store in cache (only if we got data)
+                if records:
+                    set_in_cache(CACHE_KEY, (records, warnings))
+
                 return records, warnings
 
         except httpx.ConnectError:

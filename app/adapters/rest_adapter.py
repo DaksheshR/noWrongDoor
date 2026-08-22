@@ -5,13 +5,16 @@ Handles:
 - Paginated fetching (loops through all pages using 'has_more' flag)
 - Deduplication (uses a dictionary keyed by 'id' to remove duplicates
   caused by the page-slipping bug in the REST service)
+- Caching (returns cached data if available and not expired)
 - Network errors (timeout, connection refused) with graceful warnings
 """
 
 import httpx
+from app.cache import get_from_cache, set_in_cache
 
 REST_BASE_URL = "http://127.0.0.1:8081"
 REST_TIMEOUT = 5.0  # seconds — REST is fast, so 5s is generous
+CACHE_KEY = "rest_residents"
 
 
 async def fetch_all_residents() -> tuple[list[dict], list[str]]:
@@ -19,10 +22,19 @@ async def fetch_all_residents() -> tuple[list[dict], list[str]]:
     Fetches ALL residents from the REST service, page by page,
     and deduplicates them.
 
+    Returns cached data if available and not expired.
+
     Returns:
         A tuple of (list_of_unique_residents, list_of_warnings).
         If the REST service is down, returns ([], [warning_message]).
     """
+    # Check cache first
+    cached = get_from_cache(CACHE_KEY)
+    if cached is not None:
+        residents, original_warnings = cached
+        cache_warnings = ["REST data served from cache."]
+        return residents, cache_warnings
+
     unique_residents: dict[str, dict] = {}  # keyed by 'id' for deduplication
     warnings: list[str] = []
     page = 1
@@ -56,6 +68,11 @@ async def fetch_all_residents() -> tuple[list[dict], list[str]]:
                 f"REST source: {duplicates_found} duplicate records "
                 f"detected and removed during pagination."
             )
+
+        # Store in cache (only if we got data)
+        result = list(unique_residents.values())
+        if result:
+            set_in_cache(CACHE_KEY, (result, warnings))
 
     except httpx.ConnectError:
         warnings.append(
