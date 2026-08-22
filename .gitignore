@@ -1,0 +1,26 @@
+# Virtual Environment
+myvenv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+
+# Package build artifacts
+*.egg-info/
+dist/
+build/
+
+# IDE / Editor files
+.vscode/
+.idea/
+
+# OS junk files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
