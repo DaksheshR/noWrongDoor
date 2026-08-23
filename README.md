@@ -33,9 +33,9 @@ Open **two separate terminals** and run:
 cd services
 python rest_service.py --port 8081
 
-# Terminal 2
+# Terminal 2 (Day 2: 40% failure rate)
 cd services
-python xml_service.py --port 8082
+python xml_service.py --port 8082 --failure-rate 0.40
 ```
 Or on Windows, double-click `services\run_both.bat`.
 

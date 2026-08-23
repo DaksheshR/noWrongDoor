@@ -53,11 +53,12 @@
 
 **Problem:** The XML server takes 0.7–2.4 seconds per request. If 50 caseworkers hit our API in the same minute, we would make 50 slow calls to the XML server, causing massive delays.
 
-**Decision:** We cache results in memory with a Time-To-Live (TTL):
-- **REST:** 60 seconds — The REST service is fast, and data changes frequently (the `last_contact` field updates often). A short TTL keeps data fresh.
-- **XML:** 120 seconds — The XML service is slow and unreliable. Benefit codes and review dates change infrequently. A longer TTL avoids unnecessary slow calls.
+**Decision:** We cache only XML results in memory with a 120-second TTL. REST data is **not cached** — it is fetched fresh on every request.
 
-**Trade-off:** Cached data may be up to 60–120 seconds stale. For a social services application where caseworkers are reviewing cases (not making real-time transactions), this staleness is acceptable. The `warnings` field transparently tells the caller when data is served from cache.
+- **REST (no cache):** The REST server is fast (instant response) and reliable (0% failure rate). Caching it would risk serving stale `last_contact` values with no meaningful performance benefit.
+- **XML (120s cache):** The XML server is slow (0.7–2.4s per request) and unreliable (40% failure rate). Caching avoids both the delay and the risk of failure for 2 minutes after a successful fetch.
+
+**Trade-off:** XML cached data may be up to 120 seconds stale. For benefit codes and review dates that change rarely (monthly), this is acceptable. The `warnings` field transparently tells the caller when data is served from cache.
 
 ---
 
@@ -79,4 +80,32 @@ When a request fails (500 error or timeout), we don't immediately trip the break
 **Why 1-second polling when OPEN?** The server is dead and nobody else is using it, so aggressive polling doesn't cause harm. It minimizes the recovery "blind spot" to at most 1 second.
 
 **Why no polling when CLOSED?** Zero wasted network traffic when the system is healthy.
+
+---
+
+## 7. Day 2 Response — XML Failure Rate Increased to 40%
+
+### What Changed
+The XML Benefits Register failure rate was permanently increased from 15% to 40% (`--failure-rate 0.40`).
+
+### What We Changed
+**Increased `MAX_RETRIES` from 3 to 5** in `xml_adapter.py`.
+
+| Retries | Failure at 15% (Day 1) | Failure at 40% (Day 2) |
+| :--- | :--- | :--- |
+| 3 retries | 0.15³ = 0.34% | 0.40³ = **6.4%** (1 in 16 — too high) |
+| **5 retries** | 0.15⁵ = 0.008% | 0.40⁵ = **1.02%** (1 in 98 — acceptable) |
+
+Even when all 5 retries fail (the rare 1.02% case), graceful degradation ensures the caseworker still receives REST data with a clear warning. The system never crashes.
+
+### What We Chose NOT to Change
+- **Timeout (3.0s):** The server's delay range (0.7–2.4s) didn't change, so our 3.0s threshold is still correct.
+- **Circuit Breaker:** The circuit breaker distinguishes between "server is dead" (connection refused) and "server is just failing randomly" (500 errors). At 40%, the server is alive but unreliable — the circuit breaker correctly stays CLOSED because `/health` still responds. No change needed.
+- **Cache TTL (120s for XML):** Caching becomes even more valuable at 40% failure because once we successfully fetch data, we avoid hitting the unreliable server for the next 2 minutes. No change needed.
+- **Retry delay (0.5s):** We considered reducing this to speed up retries, but 0.5s gives the server breathing room between attempts.
+
+### What We Would Have Done Differently
+If we had known the failure rate would jump to 40% on Day 1, we would have:
+1. **Made `MAX_RETRIES` configurable** via an environment variable (e.g., `XML_MAX_RETRIES=5`) so we could adjust it without a code change.
+2. **Calculated the retry count dynamically** based on the target failure probability, using the formula: retries = ceil(log(target_probability) / log(failure_rate)). For a target of ≤1% at 40%: ceil(log(0.01) / log(0.40)) = ceil(5.03) = 5 retries.
 

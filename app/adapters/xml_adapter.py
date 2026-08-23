@@ -3,7 +3,7 @@ XML Adapter — Fetches and parses benefit records from the XML Benefits Registe
 
 Handles:
 - XML parsing using xml.etree.ElementTree
-- Retry logic (up to 3 attempts) for the 15% random 500 errors
+- Retry logic (up to 5 attempts) for the 40% random 500 errors (Day 2 change)
 - Timeout at 3.0 seconds (XML server max delay is 2.4s + 0.6s buffer)
 - Caching (returns cached data if available and not expired)
 - Circuit Breaker (instantly returns when server is known to be dead)
@@ -18,7 +18,7 @@ from app.circuit_breaker import xml_circuit_breaker
 
 XML_BASE_URL = "http://127.0.0.1:8082"
 XML_TIMEOUT = 3.0   # seconds — server max delay is 2.4s + 0.6s buffer
-MAX_RETRIES = 3      # retry up to 3 times on 500 errors
+MAX_RETRIES = 5      # retry up to 5 times (increased from 3 for Day 2: 40% failure rate)
 RETRY_DELAY = 0.5    # seconds to wait between retries
 CACHE_KEY = "xml_benefits"
 
@@ -75,7 +75,7 @@ def _parse_records_xml(xml_text: str) -> list[dict]:
 async def fetch_all_benefits() -> tuple[list[dict], list[str]]:
     """
     Fetches ALL benefit records from the XML service.
-    Retries up to 3 times on 500 errors.
+    Retries up to 5 times on 500 errors.
 
     Returns cached data if available and not expired.
     Instantly returns if the circuit breaker is OPEN.
@@ -170,7 +170,7 @@ async def fetch_all_benefits() -> tuple[list[dict], list[str]]:
 async def fetch_single_benefit(ref: str) -> tuple[dict | None, list[str]]:
     """
     Fetches a single benefit record by its reference ID.
-    Retries up to 3 times on 500 errors.
+    Retries up to 5 times on 500 errors.
 
     Returns:
         A tuple of (benefit_record_or_None, list_of_warnings).
