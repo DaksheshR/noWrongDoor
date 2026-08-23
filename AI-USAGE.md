@@ -21,6 +21,14 @@
 - **Chose 5 retries for Day 2** — calculated the probability of all retries failing at 40% (0.40⁵ = 1.02%) and determined it was acceptable.
 - **Questioned cache staleness** — raised the concern that cached data could serve false information if server data changes, leading to a deeper analysis of the trade-off.
 
+### Identity Matching Design (Step 4C)
+- **Discovered the address trap independently** — hypothesized that REST and XML addresses differ only in the last word, then asked for data analysis to confirm.
+- **Proposed the "drop the last word" address comparison strategy** — split the address into words, ignore the last word (abbreviation vs full), compare the rest.
+- **Designed the weighted scoring system** — proposed using Name (30%), DOB (30%), Address (25%), City (15%) with a threshold of ≥ 70%.
+- **Identified the DOB missing edge case** — reasoned that some XML records have `born: null`, and these should receive partial credit (5%) rather than being treated as a mismatch.
+- **Validated the scoring thresholds** — worked through all edge cases to ensure one wrong field still matches (70%) but two wrong fields do not (40%).
+- **Adjusted weights for address vs city** — increased address weight from 20% to 25% and decreased city from 20% to 15% because addresses are more unique than city names.
+
 ### Environment Setup
 - Created the project folder (`noWrongDoor`), virtual environment (`myvenv`), and Git repository.
 - Installed all Python dependencies (`fastapi`, `uvicorn`, `httpx`).
@@ -32,6 +40,7 @@
 - Tested graceful degradation by killing the XML server and verifying REST data still loads.
 - Tested the circuit breaker by killing/restarting the XML server and monitoring the `/status` endpoint.
 - Tested the 40% failure rate (Day 2) by disabling caching and hitting the API 30+ times to witness failures.
+- Verified identity matching results: 340 matched, `match_score: 100` for complete records, `match_score: 75` for records with missing DOB.
 - Performed all Git commits and pushes.
 
 ---
@@ -41,10 +50,10 @@
 ### Research Assistance
 - Analyzed mock service source code to quantify traps: 41 REST duplicates, 15% (later 40%) XML failure rate, 0.7–2.4s XML delay range, `_pid` deletion at boot.
 - Ran Python commands to determine population sizes: 620 REST residents, 540 XML records, 340 shared across both systems.
-- Created `DATA_ANALYSIS_AND_TRAPS.md` (personal reference, not submitted) summarizing all findings in structured tables.
+- Ran an address analysis script to confirm the developer's hypothesis: all 340 shared records differ only in the last word of the address (5 abbreviation pairs: Ave/Avenue, Dr/Drive, Ln/Lane, Rd/Road, St/Street).
 
 ### Code Generation
-- Generated all Python source files: `main.py`, `rest_adapter.py`, `xml_adapter.py`, `schemas.py`, `cache.py`, `circuit_breaker.py`.
+- Generated all Python source files: `main.py`, `rest_adapter.py`, `xml_adapter.py`, `schemas.py`, `cache.py`, `circuit_breaker.py`, `matcher.py`.
 - Generated `run_both.bat` (Windows equivalent of the organizer's `run_both.sh`).
 - Generated `.gitignore` with standard Python exclusions.
 
@@ -57,6 +66,7 @@
 - Explained every concept, trap, and code block when asked (pagination duplication, `random.random()`, circuit breaker states, XML parsing, etc.).
 - Provided step-by-step guidance for each development phase.
 - Calculated retry probability tables for different failure rates.
+- Presented the developer's scoring weights in table format for easier review.
 
 ---
 
@@ -65,4 +75,6 @@
 - AI did not perform any Git operations, environment setup, or manual testing.
 - The Dynamic Polling circuit breaker strategy was independently proposed by the developer during a design discussion.
 - The decision to remove REST caching was independently proposed by the developer based on data freshness concerns.
+- The identity matching scoring system was entirely designed by the developer — including the initial weights, the threshold, the decision to handle missing DOB with partial credit, and the final weight adjustments (Address 25%, City 15%).
+- The "drop the last word" address matching strategy was independently proposed by the developer.
 - All code was reviewed and tested by the developer via Swagger UI before committing.

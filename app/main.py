@@ -9,8 +9,9 @@ import asyncio
 from fastapi import FastAPI, HTTPException
 from app.adapters.rest_adapter import fetch_all_residents
 from app.adapters.xml_adapter import fetch_all_benefits, fetch_single_benefit
+from app.matcher import find_matches, find_matches_for_single
 from app.models.schemas import (
-    Resident,
+    UnifiedResident,
     BenefitRecord,
     ResidentsResponse,
     SingleResidentResponse,
@@ -21,7 +22,7 @@ from app.circuit_breaker import xml_circuit_breaker
 app = FastAPI(
     title="No Wrong Door",
     description="Unified Resident API — One call, one resident, everything known about them.",
-    version="0.4.0",
+    version="1.0.0",
 )
 
 
@@ -66,11 +67,10 @@ async def get_all_residents():
     Fetches all residents from BOTH the REST Resident Index and
     the XML Benefits Register concurrently.
 
-    Returns a unified response with:
-    - Deduplicated REST residents
-    - XML benefit records
-    - Status indicator (success / partial_success / error)
-    - Warnings for any issues encountered
+    Performs identity matching to link REST residents with their
+    XML benefit records using a weighted scoring algorithm.
+
+    Returns a unified response with matched and unmatched records.
     """
     # Fetch from both sources concurrently using asyncio.gather
     (residents_data, rest_warnings), (benefits_data, xml_warnings) = (
@@ -83,9 +83,35 @@ async def get_all_residents():
     # Combine all warnings
     all_warnings = rest_warnings + xml_warnings
 
-    # Convert raw dicts to Pydantic models
-    residents = [Resident(**r) for r in residents_data]
-    benefits = [BenefitRecord(**b) for b in benefits_data]
+    # Perform identity matching
+    matches = find_matches(residents_data, benefits_data)
+
+    # Track which XML records were matched (to find unmatched ones)
+    matched_xml_refs = set()
+
+    # Build unified residents with matched benefits
+    unified_residents = []
+    for resident in residents_data:
+        resident_id = resident.get("id", "")
+        matched_benefits = []
+
+        if resident_id in matches:
+            for match in matches[resident_id]:
+                # Track matched XML refs
+                if match.get("ref"):
+                    matched_xml_refs.add(match["ref"])
+                matched_benefits.append(BenefitRecord(**match))
+
+        unified_residents.append(UnifiedResident(
+            **resident,
+            matched_benefits=matched_benefits,
+        ))
+
+    # Find unmatched XML benefits (those not linked to any REST resident)
+    unmatched_benefits = []
+    for benefit in benefits_data:
+        if benefit.get("ref") not in matched_xml_refs:
+            unmatched_benefits.append(BenefitRecord(**benefit))
 
     # Determine status
     if not residents_data and not benefits_data:
@@ -97,11 +123,12 @@ async def get_all_residents():
 
     return ResidentsResponse(
         status=status,
-        total_residents=len(residents),
-        total_benefits=len(benefits),
+        total_residents=len(unified_residents),
+        total_benefits=len(benefits_data),
+        total_matched=len(matches),
         warnings=all_warnings,
-        residents=residents,
-        benefits=benefits,
+        residents=unified_residents,
+        unmatched_benefits=unmatched_benefits,
     )
 
 
@@ -110,9 +137,8 @@ async def get_single_resident(resident_id: str):
     """
     Fetches a single resident by their ID from the REST Resident Index.
 
-    Also attempts to find any matching benefit records from the
-    XML Benefits Register (matched by name, not by ID — since the
-    two systems do not share a key).
+    Also fetches all XML benefit records and performs identity matching
+    to find any benefits belonging to this resident.
     """
     import httpx
 
@@ -145,8 +171,21 @@ async def get_single_resident(resident_id: str):
     if resident_data is None and not warnings:
         raise HTTPException(status_code=404, detail="Resident not found.")
 
-    # Build the resident model
-    resident = Resident(**resident_data) if resident_data else None
+    # Fetch XML benefits and match
+    matched_benefits = []
+    if resident_data:
+        benefits_data, xml_warnings = await fetch_all_benefits()
+        warnings.extend(xml_warnings)
+
+        if benefits_data:
+            matched = find_matches_for_single(resident_data, benefits_data)
+            matched_benefits = [BenefitRecord(**m) for m in matched]
+
+    # Build the unified resident model
+    resident = UnifiedResident(
+        **resident_data,
+        matched_benefits=matched_benefits,
+    ) if resident_data else None
 
     # Determine status
     if resident is None:
@@ -160,5 +199,4 @@ async def get_single_resident(resident_id: str):
         status=status,
         warnings=warnings,
         resident=resident,
-        benefits=[],  # Benefits matching will be added in Phase 4C (stretch goal)
     )

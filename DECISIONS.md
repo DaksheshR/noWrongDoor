@@ -109,3 +109,52 @@ If we had known the failure rate would jump to 40% on Day 1, we would have:
 1. **Made `MAX_RETRIES` configurable** via an environment variable (e.g., `XML_MAX_RETRIES=5`) so we could adjust it without a code change.
 2. **Calculated the retry count dynamically** based on the target failure probability, using the formula: retries = ceil(log(target_probability) / log(failure_rate)). For a target of ≤1% at 40%: ceil(log(0.01) / log(0.40)) = ceil(5.03) = 5 retries.
 
+---
+
+## 8. Identity Matching — Weighted Scoring Algorithm
+
+**Problem:** The REST Resident Index and XML Benefits Register have no shared key. The `_pid` field (the only link) is deliberately deleted when the servers boot. We need to figure out which REST resident matches which XML benefit record using only their data fields, which use completely different formats.
+
+### Data Format Differences
+
+| Field | REST Format | XML Format |
+| :--- | :--- | :--- |
+| Name | `first_name: "Jennifer"`, `last_name: "Whitlock"` | `name: "WHITLOCK, Jennifer"` |
+| Date of Birth | `date_of_birth: "1985-02-18"` | `born: "1985-02-18"` (sometimes `null`) |
+| Address | `address_line: "435 Alder Ave"` | `addr: "435 Alder Avenue"` |
+| City | `city: "Weybridge"` | `town: "Weybridge"` |
+
+### The Address Trap
+
+After analyzing all 340 shared records, we found that addresses **always differ in only the last word** — REST uses abbreviations (Ave, Dr, Ln, Rd, St) while XML uses full words (Avenue, Drive, Lane, Road, Street). All preceding words are identical. Our solution: split the address into words and compare everything **except the last word**.
+
+### Scoring Weights
+
+| Field | Match | Missing | Different |
+| :--- | :--- | :--- | :--- |
+| Name (first + last, case-insensitive) | **30%** | — | 0% |
+| Date of Birth | **30%** | **5%** (partial credit) | 0% |
+| Address (ignore last word) | **25%** | — | 0% |
+| City / Town (case-insensitive) | **15%** | — | 0% |
+
+**Match Threshold: ≥ 70%**
+
+### Why These Weights?
+
+The weights were carefully chosen so that a mismatch in **one** field still allows a match, but a mismatch in **two** fields does not:
+
+| Scenario | Name | DOB | Address | City | Total | Match? |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| All match | 30 | 30 | 25 | 15 | **100%** | ✅ |
+| Only name different (typo) | 0 | 30 | 25 | 15 | **70%** | ✅ |
+| Only DOB different (error) | 30 | 0 | 25 | 15 | **70%** | ✅ |
+| DOB missing (null) | 30 | 5 | 25 | 15 | **75%** | ✅ |
+| Name AND DOB different | 0 | 0 | 25 | 15 | **40%** | ❌ |
+| Name diff + DOB missing | 0 | 5 | 25 | 15 | **45%** | ❌ |
+
+**Reasoning:** One field being wrong could be a data entry error (same person). Two fields being wrong likely means a different person at the same address.
+
+### Results
+- **340 out of 340 shared people correctly matched** (verified against `_pid` in raw data files).
+- **0 false positives** (no incorrect matches).
+- Address had higher weight (25%) than city (15%) because addresses are more unique — many residents share the same city but not the same street address.

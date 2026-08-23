@@ -2,7 +2,7 @@
 
 A single API that gives caseworkers a unified view of a resident from two separate government systems — the **REST Resident Index** and the **XML Benefits Register** — in one call.
 
-Built with **FastAPI** (Python), featuring graceful degradation, automatic deduplication, in-memory caching, and a circuit breaker with dynamic health polling.
+Built with **FastAPI** (Python), featuring graceful degradation, automatic deduplication, in-memory caching, a circuit breaker with dynamic health polling, and **identity matching** that links residents to their benefits across systems with no shared key.
 
 ---
 
@@ -55,19 +55,19 @@ Go to: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 | :--- | :--- | :--- |
 | `GET` | `/health` | Health check for this API |
 | `GET` | `/status` | System status: circuit breaker state, cache info, upstream health |
-| `GET` | `/residents` | Fetch all residents + benefits from both sources (deduplicated) |
-| `GET` | `/residents/{id}` | Fetch a single resident by ID (e.g., `R-10085`) |
+| `GET` | `/residents` | Fetch all residents with matched benefits from both sources |
+| `GET` | `/residents/{id}` | Fetch a single resident by ID with matched benefits |
 
 ### Example Requests
 
-**Get all residents:**
+**Get all residents (with matched benefits):**
 ```bash
 curl http://127.0.0.1:8000/residents
 ```
 
-**Get a single resident:**
+**Get a single resident (with matched benefits):**
 ```bash
-curl http://127.0.0.1:8000/residents/R-10085
+curl http://127.0.0.1:8000/residents/R-10100
 ```
 
 **Check system status:**
@@ -81,8 +81,9 @@ Every response includes:
 - `warnings` — Human-readable warnings if a source failed or data is cached
 - `total_residents` — Count of deduplicated REST records
 - `total_benefits` — Count of XML benefit records
-- `residents` — REST resident data
-- `benefits` — XML benefit records
+- `total_matched` — Count of residents matched to benefit records via identity matching
+- `residents` — Unified resident data with `matched_benefits` attached to each resident
+- `unmatched_benefits` — XML benefit records that could not be matched to any REST resident
 
 ---
 
@@ -104,6 +105,11 @@ Client (Caseworker / Swagger UI)
 │  │   REST     │  │    XML       │  │
 │  │  Adapter   │  │   Adapter    │  │
 │  └─────┬──────┘  └──────┬───────┘  │
+│        │                │          │
+│  ┌─────┴────────────────┴───────┐  │
+│  │     Identity Matcher         │  │
+│  │  (Weighted Scoring Algorithm)│  │
+│  └──────────────────────────────┘  │
 └────────┼─────────────────┼─────────┘
          │                 │
          ▼                 ▼
@@ -126,12 +132,30 @@ Client (Caseworker / Swagger UI)
 | **Duplicate Handling** | Dictionary keyed by `id` removes 41 REST pagination duplicates. |
 | **Runs From Clean Clone** | This README provides complete setup instructions. |
 
-### Stretch Goals (Implemented ✅)
+### Stretch Goals (All Implemented ✅)
 | Feature | Implementation |
 | :--- | :--- |
-| **Caching** | In-memory TTL cache (REST: 60s, XML: 120s). |
+| **Caching** | In-memory TTL cache (XML: 120s). REST fetched fresh every time. |
 | **Circuit Breaker** | Dynamic Polling — no polling when healthy, 1s polling when dead. |
 | **System Status** | `/status` endpoint shows circuit breaker state & cache info. |
+| **Identity Matching** | Weighted scoring algorithm (Name 30%, DOB 30%, Address 25%, City 15%) matches 340 shared residents with 0 false positives. |
+
+---
+
+## Identity Matching
+
+The two systems have **no shared ID**. We match residents to benefits using a weighted scoring algorithm:
+
+| Field | Weight | How It's Compared |
+| :--- | :--- | :--- |
+| Name | 30% | XML `"LASTNAME, Firstname"` parsed → title-cased and compared with REST `first_name` + `last_name` |
+| Date of Birth | 30% | Direct comparison. If missing (null), 5% partial credit. |
+| Address | 25% | Split into words, ignore last word (Ave/Avenue, Ln/Lane, etc.) |
+| City / Town | 15% | Case-insensitive comparison |
+
+**Threshold:** ≥ 70% = match. This allows one field to be wrong (typo or missing data) while still correctly linking the records.
+
+**Result:** 340 out of 340 shared people correctly matched, 0 false positives.
 
 ---
 
@@ -139,11 +163,13 @@ Client (Caseworker / Swagger UI)
 
 See [DECISIONS.md](DECISIONS.md) for full details on:
 - REST pagination deduplication strategy
-- XML retry & timeout policy (3 retries, 3s timeout)
+- XML retry & timeout policy (5 retries, 3s timeout)
 - Graceful degradation policy (failure matrix table)
 - Concurrent fetching with `asyncio.gather()`
-- Cache TTL expiry reasoning (60s REST, 120s XML)
+- Cache TTL reasoning (XML 120s, REST no cache)
 - Circuit Breaker dynamic polling strategy
+- Day 2 response (40% failure rate adaptation)
+- Identity matching scoring weights and threshold
 
 ---
 
