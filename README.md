@@ -27,20 +27,28 @@ pip install -r requirements.txt
 ```
 
 ### 4. Start the mock services
-Open **two separate terminals** and run:
+Open **two separate terminals**, and in each one, navigate to the `noWrongDoor` folder and activate the virtual environment:
 ```bash
-# Terminal 1
+# Terminal 1 (REST Service)
+cd <path-to-noWrongDoor>
+myvenv\Scripts\activate        # Windows (use source myvenv/bin/activate on Mac/Linux)
 cd services
 python rest_service.py --port 8081
 
-# Terminal 2 (Day 2: 40% failure rate)
+# Terminal 2 (XML Service - Day 2: 40% failure rate)
+cd <path-to-noWrongDoor>
+myvenv\Scripts\activate        # Windows
 cd services
 python xml_service.py --port 8082 --failure-rate 0.40
 ```
 Or on Windows, double-click `services\run_both.bat`.
 
 ### 5. Start the API
+Open a **third terminal**, navigate to the project root, activate the environment, and start the API:
 ```bash
+# Terminal 3 (API)
+cd <path-to-noWrongDoor>
+myvenv\Scripts\activate        # Windows
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -97,8 +105,8 @@ Client (Caseworker / Swagger UI)
 │     No Wrong Door API (FastAPI)    │  Port 8000
 │                                    │
 │  ┌────────────┐  ┌──────────────┐  │
-│  │   Cache     │  │   Circuit    │  │
-│  │  (TTL)      │  │   Breaker   │  │
+│  │   Cache    │  │   Circuit    │  │
+│  │  (TTL)     │  │   Breaker    │  │
 │  └────────────┘  └──────────────┘  │
 │                                    │
 │  ┌────────────┐  ┌──────────────┐  │
