@@ -235,7 +235,7 @@ async def search_residents(name: str):
         status = "success"
 
     # Calculate exactly how many XML records matched the search
-    total_xml_found = sum(len(r.matched_benefits) for r in matched_data) + len(xml_only_data)
+    total_xml_found = sum(len(r.matched_xml_data) for r in matched_data) + len(xml_only_data)
 
     return ResidentsResponse(
         status=status,
