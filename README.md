@@ -64,16 +64,24 @@ Go to: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 | `GET` | `/health` | Health check for this API |
 | `GET` | `/status` | System status: circuit breaker state, cache info, upstream health |
 | `GET` | `/residents` | Fetch all residents with matched benefits from both sources |
+| `GET` | `/residents/search?name=` | Search residents by name (case-insensitive partial match) |
 | `GET` | `/residents/{id}` | Fetch a single resident by ID with matched benefits |
 
 ### Example Requests
+
+*Note: You can run these `curl` commands in a new, separate terminal. You do not need to activate the virtual environment to run `curl`, but the API (Terminal 3) must be running.*
 
 **Get all residents (with matched benefits):**
 ```bash
 curl http://127.0.0.1:8000/residents
 ```
 
-**Get a single resident (with matched benefits):**
+**Search by name (how a caseworker would actually use it):**
+```bash
+curl "http://127.0.0.1:8000/residents/search?name=whitlock"
+```
+
+**Get a single resident by ID (with matched benefits):**
 ```bash
 curl http://127.0.0.1:8000/residents/R-10100
 ```
@@ -82,6 +90,12 @@ curl http://127.0.0.1:8000/residents/R-10100
 ```bash
 curl http://127.0.0.1:8000/status
 ```
+
+### Testing in Swagger UI
+If you prefer a visual interface over `curl`, you can test these exact same examples in your browser:
+1. Go to [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+2. **To search by name:** Open `GET /residents/search`, click **Try it out**, enter `whitlock` in the `name` field, and click **Execute**.
+3. **To get a single resident:** Open `GET /residents/{resident_id}`, click **Try it out**, enter `R-10100` in the `resident_id` field, and click **Execute**.
 
 ### Response Format
 Every response includes:
@@ -147,6 +161,7 @@ Client (Caseworker / Swagger UI)
 | **Circuit Breaker** | Dynamic Polling — no polling when healthy, 1s polling when dead. |
 | **System Status** | `/status` endpoint shows circuit breaker state & cache info. |
 | **Identity Matching** | Weighted scoring algorithm (Name 30%, DOB 30%, Address 25%, City 15%) matches 340 shared residents with 0 false positives. |
+| **Name Search** | `GET /residents/search?name=` — case-insensitive partial match across both REST and XML databases. |
 
 ---
 

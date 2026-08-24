@@ -132,6 +132,100 @@ async def get_all_residents():
     )
 
 
+@app.get("/residents/search", response_model=ResidentsResponse)
+async def search_residents(name: str):
+    """
+    Searches for residents by name (first or last name) across BOTH
+    the REST Resident Index and the XML Benefits Register.
+
+    This is the endpoint a caseworker would actually use — they know
+    the resident's name, not their system ID.
+
+    Case-insensitive partial match: searching "whit" would find
+    "Whitlock", "Whitney", etc. in both systems.
+
+    Results:
+    - `residents`: REST residents matching the name (with matched XML benefits)
+    - `unmatched_benefits`: XML-only records matching the name (no REST record)
+    """
+    from app.matcher import parse_xml_name
+
+    # Fetch from both sources concurrently
+    (residents_data, rest_warnings), (benefits_data, xml_warnings) = (
+        await asyncio.gather(
+            fetch_all_residents(),
+            fetch_all_benefits(),
+        )
+    )
+
+    all_warnings = rest_warnings + xml_warnings
+
+    # Filter REST residents by name (case-insensitive partial match)
+    search_term = name.strip().lower()
+    filtered_residents = [
+        r for r in residents_data
+        if search_term in r.get("first_name", "").lower()
+        or search_term in r.get("last_name", "").lower()
+    ]
+
+    # Perform identity matching on filtered REST residents
+    matches = find_matches(filtered_residents, benefits_data)
+
+    # Track which XML refs were matched to REST residents
+    matched_xml_refs = set()
+
+    # Build unified residents with matched benefits
+    unified_residents = []
+    for resident in filtered_residents:
+        resident_id = resident.get("id", "")
+        matched_benefits = []
+
+        if resident_id in matches:
+            for match in matches[resident_id]:
+                if match.get("ref"):
+                    matched_xml_refs.add(match["ref"])
+                matched_benefits.append(BenefitRecord(**match))
+
+        unified_residents.append(UnifiedResident(
+            **resident,
+            matched_benefits=matched_benefits,
+        ))
+
+    # Also search XML-only records (people who exist in XML but NOT in REST)
+    xml_only_results = []
+    for benefit in benefits_data:
+        ref = benefit.get("ref", "")
+        # Skip if already matched to a REST resident in our results
+        if ref in matched_xml_refs:
+            continue
+
+        # Parse the XML name and search it
+        xml_first, xml_last = parse_xml_name(benefit.get("name", ""))
+        if (search_term in xml_first.lower()
+                or search_term in xml_last.lower()):
+            xml_only_results.append(BenefitRecord(**benefit))
+
+    # Determine status
+    total_found = len(unified_residents) + len(xml_only_results)
+    if total_found == 0:
+        status = "error"
+        all_warnings.append(f"No residents found matching name '{name}'.")
+    elif all_warnings:
+        status = "partial_success"
+    else:
+        status = "success"
+
+    return ResidentsResponse(
+        status=status,
+        total_residents=len(unified_residents),
+        total_benefits=len(benefits_data),
+        total_matched=len(matches),
+        warnings=all_warnings,
+        residents=unified_residents,
+        unmatched_benefits=xml_only_results,
+    )
+
+
 @app.get("/residents/{resident_id}", response_model=SingleResidentResponse)
 async def get_single_resident(resident_id: str):
     """

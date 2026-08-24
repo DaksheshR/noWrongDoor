@@ -158,3 +158,19 @@ The weights were carefully chosen so that a mismatch in **one** field still allo
 - **340 out of 340 shared people correctly matched** (verified against `_pid` in raw data files).
 - **0 false positives** (no incorrect matches).
 - Address had higher weight (25%) than city (15%) because addresses are more unique — many residents share the same city but not the same street address.
+
+---
+
+## 9. Name Search Endpoint — Searching How Caseworkers Actually Work
+
+**Problem:** Our API originally only supported looking up residents by their system ID (`GET /residents/R-10100`). In the real world, a caseworker walks in and says "I need to find Jennifer Whitlock" — they don't know her system ID.
+
+**Decision:** We added a `GET /residents/search?name=` endpoint that accepts a name (first or last) and performs a case-insensitive partial match.
+
+**Why partial match?** A caseworker might type "whit" and expect to find "Whitlock", "Whitney", etc. Partial matching is more forgiving and faster for the user than requiring the exact full name.
+
+**Why search both databases?** The initial version only searched REST residents. The developer identified that this created a blind spot: 200 people exist **only** in the XML Benefits Register (they have benefits but no REST record). By also parsing and searching XML names (`"LASTNAME, Firstname"` format), we ensure no resident is invisible to a name search regardless of which system they appear in.
+
+**Response structure:**
+- `residents` — REST residents matching the name (with matched XML benefits attached)
+- `unmatched_benefits` — XML-only records matching the name (people with benefits but no REST record)

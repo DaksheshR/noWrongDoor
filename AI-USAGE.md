@@ -20,6 +20,8 @@
 - **Decided to keep XML caching** — reasoned that the XML server's 40% failure rate and 1.55-second average delay justify caching to protect caseworkers from repeated slow/failed requests.
 - **Chose 5 retries for Day 2** — calculated the probability of all retries failing at 40% (0.40⁵ = 1.02%) and determined it was acceptable.
 - **Questioned cache staleness** — raised the concern that cached data could serve false information if server data changes, leading to a deeper analysis of the trade-off.
+- **Proposed the name search endpoint** — identified that caseworkers search by name, not by system ID, making the `GET /residents/{id}` endpoint impractical for real use.
+- **Caught the XML-only blind spot** — identified that the initial search implementation only searched REST data, making 200 XML-only people invisible to name searches.
 
 ### Identity Matching Design (Step 4C)
 - **Discovered the address trap independently** — hypothesized that REST and XML addresses differ only in the last word, then asked for data analysis to confirm.
@@ -53,7 +55,7 @@
 - Ran an address analysis script to confirm the developer's hypothesis: all 340 shared records differ only in the last word of the address (5 abbreviation pairs: Ave/Avenue, Dr/Drive, Ln/Lane, Rd/Road, St/Street).
 
 ### Code Generation
-- Generated all Python source files: `main.py`, `rest_adapter.py`, `xml_adapter.py`, `schemas.py`, `cache.py`, `circuit_breaker.py`, `matcher.py`.
+- Generated all Python source files: `main.py`, `rest_adapter.py`, `xml_adapter.py`, `schemas.py`, `cache.py`, `circuit_breaker.py`, `matcher.py` (including the name search endpoint).
 - Generated `run_both.bat` (Windows equivalent of the organizer's `run_both.sh`).
 - Generated `.gitignore` with standard Python exclusions.
 
@@ -77,4 +79,5 @@
 - The decision to remove REST caching was independently proposed by the developer based on data freshness concerns.
 - The identity matching scoring system was entirely designed by the developer — including the initial weights, the threshold, the decision to handle missing DOB with partial credit, and the final weight adjustments (Address 25%, City 15%).
 - The "drop the last word" address matching strategy was independently proposed by the developer.
+- The name search endpoint was proposed by the developer, who also caught the blind spot of XML-only records being invisible.
 - All code was reviewed and tested by the developer via Swagger UI before committing.
