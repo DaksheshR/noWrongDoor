@@ -99,15 +99,15 @@ async def get_all_residents():
         
         if resident_id in matches:
             # Person is in both systems
-            matched_benefits = []
+            matched_xml_data = []
             for match in matches[resident_id]:
                 if match.get("ref"):
                     matched_xml_refs.add(match["ref"])
-                matched_benefits.append(BenefitRecord(**match))
+                matched_xml_data.append(BenefitRecord(**match))
             
             matched_data.append(UnifiedResident(
                 **resident,
-                matched_benefits=matched_benefits,
+                matched_xml_data=matched_xml_data,
             ))
         else:
             # Person is ONLY in REST
@@ -195,15 +195,15 @@ async def search_residents(name: str):
         
         if resident_id in matches:
             # Person is in both systems
-            matched_benefits = []
+            matched_xml_data = []
             for match in matches[resident_id]:
                 if match.get("ref"):
                     matched_xml_refs.add(match["ref"])
-                matched_benefits.append(BenefitRecord(**match))
+                matched_xml_data.append(BenefitRecord(**match))
             
             matched_data.append(UnifiedResident(
                 **resident,
-                matched_benefits=matched_benefits,
+                matched_xml_data=matched_xml_data,
             ))
         else:
             # Person is ONLY in REST
@@ -291,19 +291,19 @@ async def get_single_resident(resident_id: str):
         raise HTTPException(status_code=404, detail="Resident not found.")
 
     # Fetch XML benefits and match
-    matched_benefits = []
+    matched_xml_data = []
     if resident_data:
         benefits_data, xml_warnings = await fetch_all_benefits()
         warnings.extend(xml_warnings)
 
         if benefits_data:
             matched = find_matches_for_single(resident_data, benefits_data)
-            matched_benefits = [BenefitRecord(**m) for m in matched]
+            matched_xml_data = [BenefitRecord(**m) for m in matched]
 
     # Build the unified resident model
     resident = UnifiedResident(
         **resident_data,
-        matched_benefits=matched_benefits,
+        matched_xml_data=matched_xml_data,
     ) if resident_data else None
 
     # Determine status

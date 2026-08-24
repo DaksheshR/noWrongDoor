@@ -45,7 +45,7 @@ class UnifiedResident(BaseModel):
     phone: Optional[str] = None
     program_status: Optional[str] = None
     last_contact: Optional[str] = None
-    matched_benefits: list[BenefitRecord] = []
+    matched_xml_data: list[BenefitRecord] = []
 
 
 class ResidentsResponse(BaseModel):
