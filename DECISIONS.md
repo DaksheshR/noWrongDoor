@@ -174,3 +174,16 @@ The weights were carefully chosen so that a mismatch in **one** field still allo
 **Response structure:**
 - `residents` — REST residents matching the name (with matched XML benefits attached)
 - `unmatched_benefits` — XML-only records matching the name (people with benefits but no REST record)
+
+---
+
+## 10. Neutral Data Bucketing — Removing the "Master System" Assumption
+
+**Problem:** In the initial implementation, XML benefit records were nested inside the REST resident records (`residents: [ { matched_benefits: [] } ]`). This created an architectural assumption that the REST database was the "master" system and the XML database was just an accessory. The developer identified that this assumption is dangerous — if a person exists only in the XML database, treating REST as the master system means that person is structurally treated as an "orphan" or an error.
+
+**Decision:** We restructured the API response to be completely neutral about the relationship between the two systems. The API now acts as an honest aggregator, sorting data into three explicit buckets:
+1. `matched_data` (people who exist in BOTH systems)
+2. `rest_only_data` (people who exist ONLY in the REST system)
+3. `xml_only_data` (people who exist ONLY in the XML system)
+
+**Why?** This ensures that no data is hidden or treated as secondary. If a caseworker searches for "Eastwood" and Donna Eastwood only exists in the XML system, she is clearly presented in the `xml_only_data` bucket, rather than being buried in an `unmatched_benefits` error array. We also updated all metadata counters (`total_rest_records`, `total_xml_records`, etc.) to perfectly reflect these three buckets.

@@ -23,6 +23,7 @@
 - **Proposed the name search endpoint** — identified that caseworkers search by name, not by system ID, making the `GET /residents/{id}` endpoint impractical for real use.
 - **Caught the XML-only blind spot** — identified that the initial search implementation only searched REST data, making 200 XML-only people invisible to name searches.
 - **Caught the full-name search bug** — identified that the initial search implementation failed when given a full name (e.g., "Jennifer Whitlock") and proposed a robust multi-word matching solution to handle any order.
+- **Identified the "Master System" flaw** — realized that embedding XML data inside REST records falsely assumed REST was the primary system. Proposed restructuring the API into neutral buckets (`matched_data`, `rest_only_data`, `xml_only_data`) to honestly report data independently of its source.
 
 ### Identity Matching Design (Step 4C)
 - **Discovered the address trap independently** — hypothesized that REST and XML addresses differ only in the last word, then asked for data analysis to confirm.
