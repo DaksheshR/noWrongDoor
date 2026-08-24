@@ -86,32 +86,38 @@ async def get_all_residents():
     # Perform identity matching
     matches = find_matches(residents_data, benefits_data)
 
-    # Track which XML records were matched (to find unmatched ones)
+    # Track which XML records were matched
     matched_xml_refs = set()
 
-    # Build unified residents with matched benefits
-    unified_residents = []
+    # Build buckets
+    matched_data = []
+    rest_only_data = []
+    xml_only_data = []
+
     for resident in residents_data:
         resident_id = resident.get("id", "")
-        matched_benefits = []
-
+        
         if resident_id in matches:
+            # Person is in both systems
+            matched_benefits = []
             for match in matches[resident_id]:
-                # Track matched XML refs
                 if match.get("ref"):
                     matched_xml_refs.add(match["ref"])
                 matched_benefits.append(BenefitRecord(**match))
+            
+            matched_data.append(UnifiedResident(
+                **resident,
+                matched_benefits=matched_benefits,
+            ))
+        else:
+            # Person is ONLY in REST
+            from app.models.schemas import Resident
+            rest_only_data.append(Resident(**resident))
 
-        unified_residents.append(UnifiedResident(
-            **resident,
-            matched_benefits=matched_benefits,
-        ))
-
-    # Find unmatched XML benefits (those not linked to any REST resident)
-    unmatched_benefits = []
+    # Find people ONLY in XML
     for benefit in benefits_data:
         if benefit.get("ref") not in matched_xml_refs:
-            unmatched_benefits.append(BenefitRecord(**benefit))
+            xml_only_data.append(BenefitRecord(**benefit))
 
     # Determine status
     if not residents_data and not benefits_data:
@@ -123,12 +129,15 @@ async def get_all_residents():
 
     return ResidentsResponse(
         status=status,
-        total_residents=len(unified_residents),
-        total_benefits=len(benefits_data),
-        total_matched=len(matches),
+        total_rest_records=len(residents_data),
+        total_xml_records=len(benefits_data),
+        total_matched=len(matched_data),
+        total_rest_only=len(rest_only_data),
+        total_xml_only=len(xml_only_data),
         warnings=all_warnings,
-        residents=unified_residents,
-        unmatched_benefits=unmatched_benefits,
+        matched_data=matched_data,
+        rest_only_data=rest_only_data,
+        xml_only_data=xml_only_data,
     )
 
 
@@ -176,25 +185,32 @@ async def search_residents(name: str):
     # Track which XML refs were matched to REST residents
     matched_xml_refs = set()
 
-    # Build unified residents with matched benefits
-    unified_residents = []
+    # Build buckets for filtered results
+    matched_data = []
+    rest_only_data = []
+    xml_only_data = []
+
     for resident in filtered_residents:
         resident_id = resident.get("id", "")
-        matched_benefits = []
-
+        
         if resident_id in matches:
+            # Person is in both systems
+            matched_benefits = []
             for match in matches[resident_id]:
                 if match.get("ref"):
                     matched_xml_refs.add(match["ref"])
                 matched_benefits.append(BenefitRecord(**match))
-
-        unified_residents.append(UnifiedResident(
-            **resident,
-            matched_benefits=matched_benefits,
-        ))
+            
+            matched_data.append(UnifiedResident(
+                **resident,
+                matched_benefits=matched_benefits,
+            ))
+        else:
+            # Person is ONLY in REST
+            from app.models.schemas import Resident
+            rest_only_data.append(Resident(**resident))
 
     # Also search XML-only records (people who exist in XML but NOT in REST)
-    xml_only_results = []
     for benefit in benefits_data:
         ref = benefit.get("ref", "")
         # Skip if already matched to a REST resident in our results
@@ -206,10 +222,10 @@ async def search_residents(name: str):
         xml_full_name = f"{xml_first} {xml_last}".lower()
         
         if all(part in xml_full_name for part in search_parts):
-            xml_only_results.append(BenefitRecord(**benefit))
+            xml_only_data.append(BenefitRecord(**benefit))
 
     # Determine status
-    total_found = len(unified_residents) + len(xml_only_results)
+    total_found = len(matched_data) + len(rest_only_data) + len(xml_only_data)
     if total_found == 0:
         status = "error"
         all_warnings.append(f"No residents found matching name '{name}'.")
@@ -218,14 +234,20 @@ async def search_residents(name: str):
     else:
         status = "success"
 
+    # Calculate exactly how many XML records matched the search
+    total_xml_found = sum(len(r.matched_benefits) for r in matched_data) + len(xml_only_data)
+
     return ResidentsResponse(
         status=status,
-        total_residents=len(unified_residents),
-        total_benefits=len(benefits_data),
-        total_matched=len(matches),
+        total_rest_records=len(filtered_residents),
+        total_xml_records=total_xml_found,
+        total_matched=len(matched_data),
+        total_rest_only=len(rest_only_data),
+        total_xml_only=len(xml_only_data),
         warnings=all_warnings,
-        residents=unified_residents,
-        unmatched_benefits=xml_only_results,
+        matched_data=matched_data,
+        rest_only_data=rest_only_data,
+        xml_only_data=xml_only_data,
     )
 
 

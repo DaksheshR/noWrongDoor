@@ -102,11 +102,18 @@ If you prefer a visual interface over `curl`, you can test these exact same exam
 Every response includes:
 - `status` — `"success"`, `"partial_success"`, or `"error"`
 - `warnings` — Human-readable warnings if a source failed or data is cached
-- `total_residents` — Count of deduplicated REST records
-- `total_benefits` — Count of XML benefit records
-- `total_matched` — Count of residents matched to benefit records via identity matching
-- `residents` — Unified resident data with `matched_benefits` attached to each resident
-- `unmatched_benefits` — XML benefit records that could not be matched to any REST resident
+
+**Metadata Counters:**
+- `total_rest_records` — Total residents in REST
+- `total_xml_records` — Total records in XML
+- `total_matched` — Count of residents successfully linked across both systems
+- `total_rest_only` — Count of residents appearing ONLY in REST
+- `total_xml_only` — Count of residents appearing ONLY in XML
+
+**Data Buckets:**
+- `matched_data` — People found in BOTH systems (REST demographic data + matched XML benefits)
+- `rest_only_data` — People found ONLY in the REST system
+- `xml_only_data` — People found ONLY in the XML system
 
 ---
 

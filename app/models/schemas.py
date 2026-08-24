@@ -51,15 +51,23 @@ class UnifiedResident(BaseModel):
 class ResidentsResponse(BaseModel):
     """
     The API response envelope for listing all residents.
-    Contains unified data from both sources with identity matching.
+    Contains neutral buckets for matched data, REST-only data, and XML-only data.
     """
     status: str  # "success", "partial_success", or "error"
-    total_residents: int
-    total_benefits: int
+    
+    # Metadata Counters
+    total_rest_records: int
+    total_xml_records: int
     total_matched: int
+    total_rest_only: int
+    total_xml_only: int
+    
     warnings: list[str] = []
-    residents: list[UnifiedResident] = []
-    unmatched_benefits: list[BenefitRecord] = []
+    
+    # The 3 Data Buckets
+    matched_data: list[UnifiedResident] = []
+    rest_only_data: list[Resident] = []
+    xml_only_data: list[BenefitRecord] = []
 
 
 class SingleResidentResponse(BaseModel):
