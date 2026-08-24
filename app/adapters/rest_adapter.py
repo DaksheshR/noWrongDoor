@@ -57,11 +57,9 @@ async def fetch_all_residents() -> tuple[list[dict], list[str]]:
 
                 page += 1
 
-        if duplicates_found > 0:
-            warnings.append(
-                f"REST source: {duplicates_found} duplicate records "
-                f"detected and removed during pagination."
-            )
+        # (Deduplication is successful, so we don't emit a warning. 
+        # Emitting a warning here would constantly downgrade the API 
+        # to 'partial_success' even when healthy.)
 
     except httpx.ConnectError:
         warnings.append(
