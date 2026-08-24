@@ -22,6 +22,7 @@
 - **Questioned cache staleness** — raised the concern that cached data could serve false information if server data changes, leading to a deeper analysis of the trade-off.
 - **Proposed the name search endpoint** — identified that caseworkers search by name, not by system ID, making the `GET /residents/{id}` endpoint impractical for real use.
 - **Caught the XML-only blind spot** — identified that the initial search implementation only searched REST data, making 200 XML-only people invisible to name searches.
+- **Caught the full-name search bug** — identified that the initial search implementation failed when given a full name (e.g., "Jennifer Whitlock") and proposed a robust multi-word matching solution to handle any order.
 
 ### Identity Matching Design (Step 4C)
 - **Discovered the address trap independently** — hypothesized that REST and XML addresses differ only in the last word, then asked for data analysis to confirm.

@@ -160,13 +160,15 @@ async def search_residents(name: str):
 
     all_warnings = rest_warnings + xml_warnings
 
-    # Filter REST residents by name (case-insensitive partial match)
-    search_term = name.strip().lower()
-    filtered_residents = [
-        r for r in residents_data
-        if search_term in r.get("first_name", "").lower()
-        or search_term in r.get("last_name", "").lower()
-    ]
+    # Split search term into parts to handle full names (e.g., "Jennifer Whitlock")
+    search_parts = name.strip().lower().split()
+    
+    # Filter REST residents (all search parts must be in the full name)
+    filtered_residents = []
+    for r in residents_data:
+        full_name = f"{r.get('first_name', '')} {r.get('last_name', '')}".lower()
+        if all(part in full_name for part in search_parts):
+            filtered_residents.append(r)
 
     # Perform identity matching on filtered REST residents
     matches = find_matches(filtered_residents, benefits_data)
@@ -201,8 +203,9 @@ async def search_residents(name: str):
 
         # Parse the XML name and search it
         xml_first, xml_last = parse_xml_name(benefit.get("name", ""))
-        if (search_term in xml_first.lower()
-                or search_term in xml_last.lower()):
+        xml_full_name = f"{xml_first} {xml_last}".lower()
+        
+        if all(part in xml_full_name for part in search_parts):
             xml_only_results.append(BenefitRecord(**benefit))
 
     # Determine status

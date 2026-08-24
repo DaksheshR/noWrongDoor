@@ -9,6 +9,7 @@ Built with **FastAPI** (Python), featuring graceful degradation, automatic dedup
 ## Quick Start
 
 ### 1. Clone the repository
+Open a terminal in the folder where you want to save the project, and then run:
 ```bash
 git clone https://github.com/DaksheshR/noWrongDoor.git
 cd noWrongDoor
@@ -161,7 +162,7 @@ Client (Caseworker / Swagger UI)
 | **Circuit Breaker** | Dynamic Polling — no polling when healthy, 1s polling when dead. |
 | **System Status** | `/status` endpoint shows circuit breaker state & cache info. |
 | **Identity Matching** | Weighted scoring algorithm (Name 30%, DOB 30%, Address 25%, City 15%) matches 340 shared residents with 0 false positives. |
-| **Name Search** | `GET /residents/search?name=` — case-insensitive partial match across both REST and XML databases. |
+| **Name Search** | `GET /residents/search?name=` — case-insensitive, multi-word matching across both REST and XML databases (supports full names in any order). |
 
 ---
 

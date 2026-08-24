@@ -167,7 +167,7 @@ The weights were carefully chosen so that a mismatch in **one** field still allo
 
 **Decision:** We added a `GET /residents/search?name=` endpoint that accepts a name (first or last) and performs a case-insensitive partial match.
 
-**Why partial match?** A caseworker might type "whit" and expect to find "Whitlock", "Whitney", etc. Partial matching is more forgiving and faster for the user than requiring the exact full name.
+**Why multi-word partial match?** The developer identified a critical bug in the initial implementation: searching for "Jennifer Whitlock" failed because the code checked if the *entire* string was inside the first or last name. We changed the logic to split the search term into parts and verify that *all* parts exist within the resident's full name. This allows caseworkers to type "whit", "jennifer whitlock", or even "whitlock jennifer" and successfully find the resident.
 
 **Why search both databases?** The initial version only searched REST residents. The developer identified that this created a blind spot: 200 people exist **only** in the XML Benefits Register (they have benefits but no REST record). By also parsing and searching XML names (`"LASTNAME, Firstname"` format), we ensure no resident is invisible to a name search regardless of which system they appear in.
 
